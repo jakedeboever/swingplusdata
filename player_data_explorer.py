@@ -1,4 +1,4 @@
-import streamlit as st
+  import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -6,9 +6,13 @@ import io
 
 # --- Settings ---
 FIXED_ORDER = [
-    "year", "Team", "name", "age", "Side",
-    "Swing+", "xwobacon", "Expected xwobacon", "xwobacon diff"
+    "year", "Team", "name", "Age", "side",
+    "swing_plus", "xwobacon", "predicted_xwobacon", "xwobacon_diff"
 ]
+
+def safe_mode(series):
+    m = series.mode()
+    return m.iloc[0] if not m.empty else ""
 
 # --- Load Data ---
 @st.cache_data
@@ -17,18 +21,21 @@ def load_data():
 
     # Always drop Player ID if it exists
     if "Player ID" in df.columns:
-        df = df.drop(columns=["Player ID"])
+        df = df.drop(columns=["id"])
 
+    # Enforce initial column order
+    cols = list(df.columns)
+    ordered = [c for c in FIXED_ORDER if c in cols] + [c for c in cols if c not in FIXED_ORDER]
+    df = df[ordered]
     return df
 
 df = load_data()
 
 st.title("MLB Player & Team Data Explorer")
 
-# --- Player Search Bar ---
-all_players = sorted(df["name"].unique())
+# --- Player Search Bar (no multiselect filter) ---
+all_players = sorted(df["name"].dropna().unique())
 player_search = st.text_input("Search Player")
-
 if player_search:
     selected_players = [p for p in all_players if player_search.lower() in p.lower()]
 else:
@@ -37,85 +44,74 @@ else:
 # --- Sidebar Filters ---
 st.sidebar.header("Filters")
 
-# Team filter
-all_teams = sorted(df["Team"].dropna().unique())
+# Team filter (still available for filtering only)
+all_teams = sorted(df["Team"].dropna().unique()) if "Team" in df.columns else []
 selected_teams = st.sidebar.multiselect("Select Teams", all_teams, default=all_teams)
 
 # Year filter
-all_years = sorted(df["year"].dropna().unique())
+all_years = sorted(df["year"].dropna().unique()) if "year" in df.columns else []
 selected_years = st.sidebar.multiselect("Select Years", all_years, default=all_years)
 
-# Aggregation mode
+# Aggregation mode: ONLY per-year rows or aggregate across selected years BY PLAYER
 agg_mode = st.sidebar.radio(
-    "Aggregation Mode",
-    ["Aggregate All Years (Player)", "Per Year (Player)", "Aggregate All Years (Team)"]
+    "View",
+    ["Per Year (Player)", "Aggregate Selected Years (by Player)"],
+    index=0
 )
 
 # --- Filter Data ---
-filtered_df = df[
-    df["name"].isin(selected_players) &
-    df["Team"].isin(selected_teams) &
-    df["year"].isin(selected_years)
-]
+mask = (
+    df["name"].isin(selected_players)
+    & df["Team"].isin(selected_teams)
+    & df["year"].isin(selected_years)
+)
+filtered_df = df[mask].copy()
 
-# --- Aggregations ---
-if agg_mode == "Aggregate All Years (Player)":
-    aggr_df = (
-        filtered_df
-        .groupby("name")
-        .agg({
-            "year": lambda x: ", ".join(map(str, sorted(x.unique()))),
-            "Team": lambda x: ", ".join(sorted(x.unique())),
-            "age": "mean",
-            "Side": lambda x: x.mode()[0] if not x.mode().empty else "",
-            "Swing+": "mean",
-            "xwobacon": "mean",
-            "Expected xwobacon": "mean",
-            "xwobacon diff": "mean",
-            **{c: "mean" for c in filtered_df.columns if c not in FIXED_ORDER}
-        })
-        .reset_index()
-    )
+# --- Aggregation (only across years by player) ---
+if agg_mode == "Aggregate Selected Years (by Player)":
+    # Build aggregation dictionary safely based on existing columns
+    aggr_dict = {}
 
-elif agg_mode == "Per Year (Player)":
+    # Non-numeric rollups
+    if "year" in filtered_df.columns:
+        aggr_dict["year"] = lambda x: ", ".join(map(str, sorted(pd.Series(x).dropna().unique())))
+    if "Team" in filtered_df.columns:
+        aggr_dict["Team"] = lambda x: ", ".join(sorted(pd.Series(x).dropna().unique()))
+    if "Side" in filtered_df.columns:
+        aggr_dict["Side"] = safe_mode
+    if "age" in filtered_df.columns:
+        aggr_dict["age"] = "mean"
+
+    # Numeric means for everything else except 'year'
+    num_cols = filtered_df.select_dtypes(include=["number"]).columns.tolist()
+    for c in num_cols:
+        if c not in ["year"]:  # don't average the year
+            aggr_dict[c] = "mean"
+
+    # Group by player name only
+    group_df = filtered_df.groupby("name").agg(aggr_dict).reset_index()
+
+    aggr_df = group_df
+else:
+    # Per-year rows, no aggregation
     aggr_df = filtered_df.copy()
 
-else:  # Aggregate All Years (Team)
-    aggr_df = (
-        filtered_df
-        .groupby("Team")
-        .agg({
-            "year": lambda x: ", ".join(map(str, sorted(x.unique()))),
-            "name": lambda x: ", ".join(sorted(x.unique())),
-            "age": "mean",
-            "Side": lambda x: x.mode()[0] if not x.mode().empty else "",
-            "Swing+": "mean",
-            "xwobacon": "mean",
-            "Expected xwobacon": "mean",
-            "xwobacon diff": "mean",
-            **{c: "mean" for c in filtered_df.columns if c not in FIXED_ORDER}
-        })
-        .reset_index()
-    )
-
-# --- Always drop Player ID just in case ---
+# --- Always drop Player ID just in case (post-aggregation) ---
 if "Player ID" in aggr_df.columns:
     aggr_df = aggr_df.drop(columns=["Player ID"])
 
-# --- Reorder columns always ---
-cols = [c for c in FIXED_ORDER if c in aggr_df.columns] + [c for c in aggr_df.columns if c not in FIXED_ORDER]
-aggr_df = aggr_df[cols]
+# --- Enforce column order ALWAYS ---
+cols_present = list(aggr_df.columns)
+ordered_cols = [c for c in FIXED_ORDER if c in cols_present] + [c for c in cols_present if c not in FIXED_ORDER]
+aggr_df = aggr_df[ordered_cols]
 
-# --- Stat Filters ---
-num_cols = aggr_df.select_dtypes(include=['float64','int64']).columns.tolist()
-
+# --- Stat Filters (numeric only) ---
+num_cols = aggr_df.select_dtypes(include=["float64", "int64", "float32", "int32"]).columns.tolist()
 st.sidebar.subheader("Stat Filters")
 for col in num_cols:
     min_val = float(aggr_df[col].min())
     max_val = float(aggr_df[col].max())
-    sel_min, sel_max = st.sidebar.slider(
-        f"{col}", min_val, max_val, (min_val, max_val)
-    )
+    sel_min, sel_max = st.sidebar.slider(f"{col}", min_val, max_val, (min_val, max_val))
     aggr_df = aggr_df[(aggr_df[col] >= sel_min) & (aggr_df[col] <= sel_max)]
 
 # --- Display Data ---
@@ -140,17 +136,15 @@ if len(num_cols) >= 2:
         fig, ax = plt.subplots()
         if agg_mode == "Per Year (Player)" and "year" in aggr_df.columns:
             sns.scatterplot(data=aggr_df, x=x_axis, y=y_axis, hue="year", ax=ax)
-        elif agg_mode == "Aggregate All Years (Team)":
-            sns.scatterplot(data=aggr_df, x=x_axis, y=y_axis, hue="Team", ax=ax)
         else:
+            # In aggregated mode, 'year' is a comma-separated string, so no hue
             sns.scatterplot(data=aggr_df, x=x_axis, y=y_axis, ax=ax)
         st.pyplot(fig)
 
-        # Save plot for download
+        # Save plot to buffer for download
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         buf.seek(0)
-
         st.download_button(
             label="Download Scatter Plot as PNG",
             data=buf,
