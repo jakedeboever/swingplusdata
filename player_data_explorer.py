@@ -4,20 +4,20 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import io
 
-# Load data
+# --- Settings ---
+FIXED_ORDER = [
+    "year", "Team", "name", "age", "Side",
+    "Swing+", "xwobacon", "Expected xwobacon", "xwobacon diff"
+]
+
+# --- Load Data ---
 @st.cache_data
 def load_data():
     df = pd.read_csv("final kfold data.csv")
 
-    # Remove Player ID if exists
+    # Always drop Player ID if it exists
     if "Player ID" in df.columns:
         df = df.drop(columns=["Player ID"])
-
-    # Reorder columns: fixed order first, then everything else
-    cols = list(df.columns)
-    fixed_order = ["year", "Team", "name", "age", "Side", "Swing+", "xwobacon", "Expected xwobacon", "xwobacon diff"]
-    new_order = [c for c in fixed_order if c in cols] + [c for c in cols if c not in fixed_order]
-    df = df[new_order]
 
     return df
 
@@ -58,13 +58,53 @@ filtered_df = df[
     df["year"].isin(selected_years)
 ]
 
-# --- Aggregate Data ---
+# --- Aggregations ---
 if agg_mode == "Aggregate All Years (Player)":
-    aggr_df = filtered_df.groupby("name", as_index=False).mean(numeric_only=True)
+    aggr_df = (
+        filtered_df
+        .groupby("name")
+        .agg({
+            "year": lambda x: ", ".join(map(str, sorted(x.unique()))),
+            "Team": lambda x: ", ".join(sorted(x.unique())),
+            "age": "mean",
+            "Side": lambda x: x.mode()[0] if not x.mode().empty else "",
+            "Swing+": "mean",
+            "xwobacon": "mean",
+            "Expected xwobacon": "mean",
+            "xwobacon diff": "mean",
+            **{c: "mean" for c in filtered_df.columns if c not in FIXED_ORDER}
+        })
+        .reset_index()
+    )
+
 elif agg_mode == "Per Year (Player)":
     aggr_df = filtered_df.copy()
+
 else:  # Aggregate All Years (Team)
-    aggr_df = filtered_df.groupby("Team", as_index=False).mean(numeric_only=True)
+    aggr_df = (
+        filtered_df
+        .groupby("Team")
+        .agg({
+            "year": lambda x: ", ".join(map(str, sorted(x.unique()))),
+            "name": lambda x: ", ".join(sorted(x.unique())),
+            "age": "mean",
+            "Side": lambda x: x.mode()[0] if not x.mode().empty else "",
+            "Swing+": "mean",
+            "xwobacon": "mean",
+            "Expected xwobacon": "mean",
+            "xwobacon diff": "mean",
+            **{c: "mean" for c in filtered_df.columns if c not in FIXED_ORDER}
+        })
+        .reset_index()
+    )
+
+# --- Always drop Player ID just in case ---
+if "Player ID" in aggr_df.columns:
+    aggr_df = aggr_df.drop(columns=["Player ID"])
+
+# --- Reorder columns always ---
+cols = [c for c in FIXED_ORDER if c in aggr_df.columns] + [c for c in aggr_df.columns if c not in FIXED_ORDER]
+aggr_df = aggr_df[cols]
 
 # --- Stat Filters ---
 num_cols = aggr_df.select_dtypes(include=['float64','int64']).columns.tolist()
@@ -78,6 +118,7 @@ for col in num_cols:
     )
     aggr_df = aggr_df[(aggr_df[col] >= sel_min) & (aggr_df[col] <= sel_max)]
 
+# --- Display Data ---
 st.subheader("Filtered Data")
 st.dataframe(aggr_df)
 
@@ -105,7 +146,7 @@ if len(num_cols) >= 2:
             sns.scatterplot(data=aggr_df, x=x_axis, y=y_axis, ax=ax)
         st.pyplot(fig)
 
-        # Save plot to buffer for download
+        # Save plot for download
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         buf.seek(0)
