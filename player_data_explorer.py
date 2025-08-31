@@ -113,13 +113,33 @@ ordered_cols = [c for c in FIXED_ORDER if c in cols_present] + [c for c in cols_
 aggr_df = aggr_df[ordered_cols]
 
 # --- Stat Filters (numeric only) ---
-num_cols = aggr_df.select_dtypes(include=["float64", "int64", "float32", "int32"]).columns.tolist()
+num_cols = aggr_df.select_dtypes(include=["number"]).columns.tolist()
 st.sidebar.subheader("Stat Filters")
+
 for col in num_cols:
-    min_val = float(aggr_df[col].min())
-    max_val = float(aggr_df[col].max())
-    sel_min, sel_max = st.sidebar.slider(f"{col}", min_val, max_val, (min_val, max_val))
+    col_data = aggr_df[col].dropna()
+    if col_data.empty:
+        continue
+
+    min_val = float(col_data.min())
+    max_val = float(col_data.max())
+
+    # Handle edge cases
+    if np.isnan(min_val) or np.isnan(max_val):
+        continue
+    if min_val == max_val:
+        # just show a disabled slider (or skip)
+        sel_min, sel_max = min_val, max_val
+    else:
+        sel_min, sel_max = st.sidebar.slider(
+            f"{col}",
+            min_val,
+            max_val,
+            (min_val, max_val)
+        )
+
     aggr_df = aggr_df[(aggr_df[col] >= sel_min) & (aggr_df[col] <= sel_max)]
+
 
 # --- Display Data ---
 st.subheader("Filtered Data")
