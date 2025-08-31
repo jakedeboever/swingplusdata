@@ -8,25 +8,50 @@ import io
 @st.cache_data
 def load_data():
     df = pd.read_csv("final kfold data.csv")
+
+    # Remove Player ID if exists
+    if "Player ID" in df.columns:
+        df = df.drop(columns=["Player ID"])
+
+    # Reorder columns: ensure year first, then Team, age, then Side, Swing+
+    cols = list(df.columns)
+    new_order = []
+
+    if "year" in cols:
+        new_order.append("year")
+    if "Team" in cols:
+        new_order.append("Team")
+    if "age" in cols:
+        new_order.append("age")
+    if "Side" in cols:
+        new_order.append("Side")
+    if "Swing+" in cols:
+        new_order.append("Swing+")
+
+    for c in cols:
+        if c not in new_order:
+            new_order.append(c)
+
+    df = df[new_order]
     return df
 
 df = load_data()
 
 st.title("MLB Player & Team Data Explorer")
 
-# --- Sidebar Filters ---
-st.sidebar.header("Filters")
-
-# Player search (column is "name")
+# --- Player Search Bar on Top ---
 all_players = sorted(df["name"].unique())
-player_search = st.sidebar.text_input("Search Player")
+player_search = st.text_input("Search Player")
 
 if player_search:
     filtered_players = [p for p in all_players if player_search.lower() in p.lower()]
 else:
     filtered_players = all_players
 
-selected_players = st.sidebar.multiselect("Select Players", filtered_players, default=filtered_players)
+selected_players = st.multiselect("Select Players", filtered_players, default=filtered_players)
+
+# --- Sidebar Filters ---
+st.sidebar.header("Filters")
 
 # Team filter (column is "Team")
 all_teams = sorted(df["Team"].dropna().unique())
@@ -102,3 +127,4 @@ if len(num_cols) >= 2:
         st.write(f"**Correlation Coefficient (r):** {corr:.3f}")
 else:
     st.write("Not enough numeric columns to plot.")
+
