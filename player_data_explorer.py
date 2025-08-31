@@ -17,8 +17,8 @@ st.title("MLB Player & Team Data Explorer")
 # --- Sidebar Filters ---
 st.sidebar.header("Filters")
 
-# Player search
-all_players = sorted(df["player"].unique())
+# Player search (column is "name")
+all_players = sorted(df["name"].unique())
 player_search = st.sidebar.text_input("Search Player")
 
 if player_search:
@@ -28,23 +28,23 @@ else:
 
 selected_players = st.sidebar.multiselect("Select Players", filtered_players, default=filtered_players)
 
-# Team filter
-all_teams = sorted(df["team"].dropna().unique())
+# Team filter (column is "Team")
+all_teams = sorted(df["Team"].dropna().unique())
 selected_teams = st.sidebar.multiselect("Select Teams", all_teams, default=all_teams)
 
 # Aggregation mode
 agg_mode = st.sidebar.radio("Aggregation Mode", ["Aggregate All Years (Player)", "Per Year (Player)", "Aggregate All Years (Team)"])
 
 # --- Filter Data ---
-filtered_df = df[df["player"].isin(selected_players) & df["team"].isin(selected_teams)]
+filtered_df = df[df["name"].isin(selected_players) & df["Team"].isin(selected_teams)]
 
 # --- Aggregate Data ---
 if agg_mode == "Aggregate All Years (Player)":
-    aggr_df = filtered_df.groupby("player", as_index=False).mean(numeric_only=True)
+    aggr_df = filtered_df.groupby("name", as_index=False).mean(numeric_only=True)
 elif agg_mode == "Per Year (Player)":
     aggr_df = filtered_df.copy()
 else:  # Aggregate All Years (Team)
-    aggr_df = filtered_df.groupby("team", as_index=False).mean(numeric_only=True)
+    aggr_df = filtered_df.groupby("Team", as_index=False).mean(numeric_only=True)
 
 # --- Stat Filters ---
 num_cols = aggr_df.select_dtypes(include=['float64','int64']).columns.tolist()
@@ -80,7 +80,7 @@ if len(num_cols) >= 2:
         if agg_mode == "Per Year (Player)" and "year" in aggr_df.columns:
             sns.scatterplot(data=aggr_df, x=x_axis, y=y_axis, hue="year", ax=ax)
         elif agg_mode == "Aggregate All Years (Team)":
-            sns.scatterplot(data=aggr_df, x=x_axis, y=y_axis, hue="team", ax=ax)
+            sns.scatterplot(data=aggr_df, x=x_axis, y=y_axis, hue="Team", ax=ax)
         else:
             sns.scatterplot(data=aggr_df, x=x_axis, y=y_axis, ax=ax)
         st.pyplot(fig)
