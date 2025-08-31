@@ -13,55 +13,50 @@ def load_data():
     if "Player ID" in df.columns:
         df = df.drop(columns=["Player ID"])
 
-    # Reorder columns: ensure year first, then Team, age, then Side, Swing+
+    # Reorder columns: fixed order first, then everything else
     cols = list(df.columns)
-    new_order = []
-
-    if "year" in cols:
-        new_order.append("year")
-    if "Team" in cols:
-        new_order.append("Team")
-    if "age" in cols:
-        new_order.append("age")
-    if "Side" in cols:
-        new_order.append("Side")
-    if "Swing+" in cols:
-        new_order.append("Swing+")
-
-    for c in cols:
-        if c not in new_order:
-            new_order.append(c)
-
+    fixed_order = ["year", "Team", "name", "age", "Side", "Swing+", "xwobacon", "Expected xwobacon", "xwobacon diff"]
+    new_order = [c for c in fixed_order if c in cols] + [c for c in cols if c not in fixed_order]
     df = df[new_order]
+
     return df
 
 df = load_data()
 
 st.title("MLB Player & Team Data Explorer")
 
-# --- Player Search Bar on Top ---
+# --- Player Search Bar ---
 all_players = sorted(df["name"].unique())
 player_search = st.text_input("Search Player")
 
 if player_search:
-    filtered_players = [p for p in all_players if player_search.lower() in p.lower()]
+    selected_players = [p for p in all_players if player_search.lower() in p.lower()]
 else:
-    filtered_players = all_players
-
-selected_players = st.multiselect("Select Players", filtered_players, default=filtered_players)
+    selected_players = all_players
 
 # --- Sidebar Filters ---
 st.sidebar.header("Filters")
 
-# Team filter (column is "Team")
+# Team filter
 all_teams = sorted(df["Team"].dropna().unique())
 selected_teams = st.sidebar.multiselect("Select Teams", all_teams, default=all_teams)
 
+# Year filter
+all_years = sorted(df["year"].dropna().unique())
+selected_years = st.sidebar.multiselect("Select Years", all_years, default=all_years)
+
 # Aggregation mode
-agg_mode = st.sidebar.radio("Aggregation Mode", ["Aggregate All Years (Player)", "Per Year (Player)", "Aggregate All Years (Team)"])
+agg_mode = st.sidebar.radio(
+    "Aggregation Mode",
+    ["Aggregate All Years (Player)", "Per Year (Player)", "Aggregate All Years (Team)"]
+)
 
 # --- Filter Data ---
-filtered_df = df[df["name"].isin(selected_players) & df["Team"].isin(selected_teams)]
+filtered_df = df[
+    df["name"].isin(selected_players) &
+    df["Team"].isin(selected_teams) &
+    df["year"].isin(selected_years)
+]
 
 # --- Aggregate Data ---
 if agg_mode == "Aggregate All Years (Player)":
@@ -127,4 +122,3 @@ if len(num_cols) >= 2:
         st.write(f"**Correlation Coefficient (r):** {corr:.3f}")
 else:
     st.write("Not enough numeric columns to plot.")
-
