@@ -67,12 +67,9 @@ mask = (
 )
 filtered_df = df[mask].copy()
 
-# --- Aggregation (only across years by player) ---
 if agg_mode == "Aggregate Selected Years (by Player)":
-    # Build aggregation dictionary safely based on existing columns
     aggr_dict = {}
 
-    # Non-numeric rollups
     if "year" in filtered_df.columns:
         aggr_dict["year"] = lambda x: ", ".join(map(str, sorted(pd.Series(x).dropna().unique())))
     if "Team" in filtered_df.columns:
@@ -82,11 +79,17 @@ if agg_mode == "Aggregate Selected Years (by Player)":
     if "age" in filtered_df.columns:
         aggr_dict["age"] = "mean"
 
-    # Numeric means for everything else except 'year'
     num_cols = filtered_df.select_dtypes(include=["number"]).columns.tolist()
     for c in num_cols:
-        if c not in ["year"]:  # don't average the year
+        if c not in ["year"]:
             aggr_dict[c] = "mean"
+
+    aggr_df = filtered_df.groupby("name").agg(aggr_dict).reset_index()
+
+    # --- Round Swing+ to no decimals ---
+    if "Swing+" in aggr_df.columns:
+        aggr_df["Swing+"] = aggr_df["Swing+"].round(0).astype(int)
+
 
     # Group by player name only
     group_df = filtered_df.groupby("name").agg(aggr_dict).reset_index()
