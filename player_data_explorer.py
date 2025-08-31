@@ -86,9 +86,13 @@ if agg_mode == "Aggregate Selected Years (by Player)":
 
     aggr_df = filtered_df.groupby("name").agg(aggr_dict).reset_index()
 
-    # --- Round Swing+ to no decimals ---
-    if "Swing+" in aggr_df.columns:
-        aggr_df["Swing+"] = aggr_df["Swing+"].round(0).astype(int)
+    # --- Post-processing rounding ---
+    for col in aggr_df.columns:
+        if col.strip().lower() == "swing+":
+            aggr_df[col] = aggr_df[col].round(0).astype(int)
+        elif col in ["xwobacon", "Expected xwobacon", "xwobacon diff"]:
+            aggr_df[col] = aggr_df[col].round(3)
+
 
 
     # Group by player name only
